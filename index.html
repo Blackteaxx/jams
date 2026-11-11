@@ -1,0 +1,719 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>JAMS · Judge-gated Agentic Middleware Search</title>
+<meta name="description" content="JAMS：由 agent 从零写出、经 judge 把关的 LLM→Jev 中间层。在 6 个没见过的场景、6 个模型上与现成 training-free 方法对比。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Noto+Serif+SC:wght@500;700&family=Space+Grotesk:wght@400;500;600&display=swap">
+<style>
+:root{
+  color-scheme:light;
+  --paper:#f3f2ed; --paper-2:#e9ebe5; --paper-3:#dde2da; --card:#f8f7f3;
+  --ink:#1c282b; --ink-2:#3c4a4d; --muted:#5c6967; --rule:#c9d0c9; --rule-2:#b0bab2;
+  --accent:#305e70; --accent-2:#467a8c; --accent-soft:#dce7e7; --accent-ink:#f3f2ed;
+  --base:#a9b3ac; --base-2:#8d9993;
+  --pos:#305e70; --neg:#a5503b; --mid:#ebe9e2; --seq0:#eef0ea; --seq1:#305e70;
+  --header:#f3f2edf2;
+  --f-body:"Inter","PingFang SC","Hiragino Sans GB","Noto Sans SC","Microsoft YaHei",system-ui,sans-serif;
+  --f-display:"Noto Serif SC","Songti SC","STSong","Source Han Serif SC",Georgia,serif;
+  --f-brand:"Space Grotesk","Inter",system-ui,sans-serif;
+  --f-mono:"JetBrains Mono","SFMono-Regular",Menlo,Consolas,monospace;
+  --gutter:clamp(16px,5vw,64px);
+  --container:1240px;
+}
+*,*::before,*::after{box-sizing:border-box}
+html{scroll-padding-top:84px;-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--f-body);font-size:16px;line-height:1.6;-webkit-font-smoothing:antialiased}
+::selection{background:#305e7033}
+a{color:inherit;text-underline-offset:.18em;text-decoration-thickness:1px}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+h1,h2,h3{margin:0;font-family:var(--f-display);font-weight:500;line-height:1.18;text-wrap:balance;letter-spacing:-.01em}
+p{margin:0;text-wrap:pretty}
+code,.mono{font-family:var(--f-mono);font-size:.86em}
+[hidden]{display:none!important}
+.wrap{width:100%;max-width:var(--container);margin-inline:auto;padding-left:max(var(--gutter),env(safe-area-inset-left,0px));padding-right:max(var(--gutter),env(safe-area-inset-right,0px))}
+
+/* header */
+.site-header{position:sticky;top:0;z-index:30;background:var(--header);backdrop-filter:saturate(1.2) blur(8px);border-bottom:1px solid var(--rule)}
+.site-header .wrap{display:flex;align-items:center;justify-content:space-between;gap:16px;height:60px}
+.brand{display:flex;align-items:baseline;gap:10px;text-decoration:none}
+.brand b{font-family:var(--f-brand);font-weight:600;font-size:1.25rem;letter-spacing:-.02em}
+.brand span{font-size:.78rem;color:var(--muted)}
+.nav{display:flex;gap:clamp(12px,3vw,32px);font-size:.88rem}
+.nav a{text-decoration:none;color:var(--ink-2)}
+.nav a:hover{color:var(--ink);text-decoration:underline}
+@media (max-width:560px){.brand span{display:none}}
+
+/* hero */
+.hero{padding-block:clamp(48px,9vw,112px) clamp(40px,6vw,72px);border-bottom:1px solid var(--rule)}
+.hero-grid{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:clamp(32px,5vw,72px);align-items:end}
+@media (max-width:900px){.hero-grid{grid-template-columns:1fr}}
+.eyebrow{font-family:var(--f-mono);font-size:.74rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.wordmark{font-family:var(--f-brand);font-weight:500;font-size:clamp(4.2rem,13vw,10.5rem);line-height:.86;letter-spacing:-.055em;margin:18px 0 12px}
+.wordmark .j{color:var(--accent)}
+.expand{font-family:var(--f-brand);font-size:clamp(1rem,1.7vw,1.3rem);color:var(--ink-2);letter-spacing:-.01em}
+.expand u{text-decoration:none;color:var(--accent);font-weight:600}
+.hero h1{font-size:clamp(1.55rem,3vw,2.4rem);margin-top:32px;max-width:17em}
+.lead{font-size:clamp(1.02rem,1.3vw,1.14rem);color:var(--ink-2);max-width:56ch;margin-top:18px}
+.contract{background:var(--card);border:1px solid var(--rule-2);font-family:var(--f-mono);font-size:.8rem;line-height:1.7;min-width:0;margin:0}
+@media (max-width:560px){.contract{font-size:.7rem}}
+.contract-head{display:flex;justify-content:space-between;gap:8px;padding:10px 16px;border-bottom:1px solid var(--rule);color:var(--muted);font-size:.72rem;letter-spacing:.06em}
+.contract pre{margin:0;padding:16px;overflow-x:auto;white-space:pre;color:var(--ink)}
+.contract .c{color:var(--muted)}
+.contract .k{color:var(--accent);font-weight:500}
+.contract .s{color:#7a5a2c}
+
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));margin-top:clamp(40px,6vw,72px);border-top:1px solid var(--ink)}
+.stat{padding:18px 20px 4px 0;min-width:0}
+.stat+.stat{padding-left:20px;border-left:1px solid var(--rule)}
+.stat .n{font-family:var(--f-brand);font-weight:500;font-size:clamp(2.1rem,4.2vw,3.4rem);letter-spacing:-.04em;line-height:1}
+.stat .n small{font-size:.42em;letter-spacing:0;margin-left:4px;color:var(--ink-2)}
+.stat .l{font-size:.86rem;color:var(--ink-2);margin-top:10px;max-width:24ch}
+@media (max-width:820px){.stats{grid-template-columns:repeat(2,minmax(0,1fr))}.stat:nth-child(3){padding-left:0;border-left:0}.stat:nth-child(n+3){border-top:1px solid var(--rule);margin-top:12px}}
+
+/* sections */
+section.block{padding-block:clamp(56px,8vw,104px);border-bottom:1px solid var(--rule)}
+.sec-head{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.6fr);gap:16px 48px;align-items:end;margin-bottom:clamp(28px,4vw,48px)}
+@media (max-width:860px){.sec-head{grid-template-columns:1fr}}
+.sec-num{font-family:var(--f-mono);font-size:.78rem;color:var(--muted);letter-spacing:.1em;display:flex;align-items:center;gap:12px;margin-bottom:14px}
+.sec-num::after{content:"";height:1px;width:56px;background:var(--rule-2)}
+.sec-head h2{font-size:clamp(1.9rem,3.6vw,3rem)}
+.sec-head p{color:var(--ink-2);max-width:62ch}
+h3.sub{font-size:clamp(1.25rem,2vw,1.6rem);margin-bottom:8px}
+.sub-note{color:var(--muted);font-size:.9rem;max-width:68ch}
+
+/* controls */
+.controls{display:flex;flex-wrap:wrap;gap:10px 24px;align-items:center;margin-bottom:18px}
+.ctl{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
+.ctl-label{font-family:var(--f-mono);font-size:.7rem;color:var(--muted);letter-spacing:.08em}
+.seg{display:inline-flex;flex-wrap:wrap;border:1px solid var(--rule-2);background:var(--card)}
+.seg button{font:inherit;font-size:.84rem;border:0;background:transparent;color:var(--ink-2);padding:7px 13px;cursor:pointer}
+.seg button+button{border-left:1px solid var(--rule)}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--paper)}
+.seg button:hover:not([aria-pressed="true"]){background:var(--paper-2)}
+
+/* bar chart */
+.panel{background:var(--card);border:1px solid var(--rule-2);min-width:0}
+.panel-head{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-end;gap:8px 24px;padding:18px 20px 14px;border-bottom:1px solid var(--rule)}
+.panel-title{font-weight:600;font-size:1rem}
+.panel-note{font-size:.8rem;color:var(--muted);margin-top:2px}
+.key{display:flex;gap:16px;font-size:.8rem;color:var(--ink-2);flex-wrap:wrap}
+.key i{display:inline-block;width:12px;height:12px;margin-right:6px;vertical-align:-1px;border-radius:2px}
+.bars{padding:12px 20px 18px;display:grid;gap:0}
+.bar-row,.bar-axis{display:grid;grid-template-columns:minmax(118px,190px) minmax(0,1fr) 54px 62px;align-items:center;gap:0 14px}
+.bar-axis{font-family:var(--f-mono);font-size:.68rem;color:var(--muted);height:26px}
+.bar-axis .ticks{position:relative;height:100%}
+.bar-axis .ticks span{position:absolute;bottom:4px;transform:translateX(-50%)}
+.bar-axis .ticks span:first-child{transform:none}
+.bar-axis .h{text-align:right;line-height:1.2;align-self:end;padding-bottom:4px}
+.bar-row{height:42px;cursor:default}
+.bar-row:hover{background:linear-gradient(90deg,transparent,var(--paper-2) 8%,var(--paper-2) 92%,transparent)}
+.bar-name{font-size:.88rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bar-row.ours .bar-name{font-weight:600}
+.bar-name .tag{font-family:var(--f-mono);font-size:.62rem;color:var(--accent);border:1px solid var(--accent);padding:0 4px;margin-left:6px;vertical-align:1px;letter-spacing:.04em}
+.track{position:relative;height:100%}
+.track .grid{position:absolute;top:0;bottom:0;width:1px;background:var(--rule);opacity:.7}
+.track .ref{position:absolute;top:0;bottom:0;width:0;border-left:1.5px dashed var(--ink-2);z-index:2}
+.bar{position:absolute;left:0;top:50%;height:16px;transform:translateY(-50%);background:var(--base);border-radius:0 4px 4px 0;transition:width .5s cubic-bezier(.16,1,.3,1);z-index:1}
+.bar-row.ours .bar{background:var(--accent);height:20px}
+.bar-row.ref-row .bar{background:var(--base-2)}
+.bar-val{font-family:var(--f-mono);font-size:.88rem;text-align:right;font-variant-numeric:tabular-nums}
+.bar-row.ours .bar-val{font-weight:500}
+.bar-t{font-family:var(--f-mono);font-size:.78rem;text-align:right;color:var(--muted);font-variant-numeric:tabular-nums}
+.bar-foot{padding:0 20px 16px;font-size:.78rem;color:var(--muted);display:flex;flex-wrap:wrap;gap:4px 18px}
+@media (max-width:620px){
+  .bar-row,.bar-axis{grid-template-columns:96px minmax(0,1fr) 40px 44px;gap:0 8px}
+  .bar-name{font-size:.8rem}.bar-name .tag{display:none}
+  .bar-val{font-size:.8rem}.bar-t{font-size:.7rem}
+  .bars{padding:10px 12px 14px}.panel-head{padding:14px 12px 12px}.bar-foot{padding:0 12px 14px}
+}
+
+/* forest */
+.two{display:grid;grid-template-columns:minmax(0,1fr);gap:28px;margin-top:28px}
+.forest{padding:12px 20px 18px}
+.f-row,.f-axis{display:grid;grid-template-columns:minmax(150px,230px) minmax(0,1fr) 136px;align-items:center;gap:0 16px}
+.f-row{height:46px;border-top:1px solid var(--rule)}
+.f-row:first-of-type{border-top:0}
+.f-label{min-width:0}
+.f-label b{display:block;font-weight:500;font-size:.88rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.f-label span{display:block;font-size:.74rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.f-track{position:relative;height:100%}
+.f-zero{position:absolute;top:0;bottom:0;width:0;border-left:1.5px solid var(--ink-2)}
+.f-grid{position:absolute;top:0;bottom:0;width:1px;background:var(--rule);opacity:.6}
+.f-ci{position:absolute;top:50%;height:2px;background:var(--accent);transform:translateY(-50%);transition:left .45s cubic-bezier(.16,1,.3,1),width .45s cubic-bezier(.16,1,.3,1)}
+.f-ci::before,.f-ci::after{content:"";position:absolute;top:-5px;width:2px;height:12px;background:var(--accent)}
+.f-ci::before{left:0}.f-ci::after{right:0}
+.f-dot{position:absolute;top:50%;width:12px;height:12px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 2px var(--card);transform:translate(-50%,-50%);transition:left .45s cubic-bezier(.16,1,.3,1)}
+.f-row.cross .f-ci,.f-row.cross .f-ci::before,.f-row.cross .f-ci::after{background:var(--base-2)}
+.f-row.cross .f-dot{background:var(--card);border:2px solid var(--base-2)}
+.f-val{font-family:var(--f-mono);font-size:.84rem;text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.f-val small{display:block;color:var(--muted);font-size:.72rem}
+.f-axis{font-family:var(--f-mono);font-size:.68rem;color:var(--muted);height:24px}
+.f-axis .ticks{position:relative;height:100%}
+.f-axis .ticks span{position:absolute;top:6px;transform:translateX(-50%)}
+@media (max-width:620px){.f-row,.f-axis{grid-template-columns:104px minmax(0,1fr) 84px;gap:0 8px}.forest{padding:10px 12px 14px}.f-val{font-size:.76rem}.f-label b{font-size:.8rem}}
+
+/* method */
+.flow{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));border:1px solid var(--rule-2);background:var(--card)}
+.step{padding:18px 18px 20px;min-width:0;position:relative}
+.step+.step{border-left:1px solid var(--rule)}
+.step .no{font-family:var(--f-mono);font-size:.7rem;color:var(--muted);letter-spacing:.08em}
+.step h4{margin:8px 0 6px;font-size:1rem;font-weight:600}
+.step p{font-size:.84rem;color:var(--ink-2)}
+.step.gate{background:var(--accent-soft)}
+.step.gate .no{color:var(--accent)}
+.step+.step::before{content:"→";position:absolute;left:-9px;top:16px;font-size:.9rem;background:var(--card);color:var(--muted);line-height:1;padding:2px 0}
+.step.gate::before{background:var(--card)}
+.loop{display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px 16px;border:1px solid var(--rule-2);border-top:0;padding:10px 18px;font-size:.82rem;color:var(--ink-2);background:var(--paper-2)}
+.loop b{font-family:var(--f-mono);font-weight:500;color:var(--ink)}
+.after{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));margin-top:14px;gap:14px}
+.after div{border-top:2px solid var(--ink);padding-top:10px;font-size:.86rem;color:var(--ink-2);min-width:0}
+.after b{display:block;color:var(--ink);font-weight:600;margin-bottom:2px}
+@media (max-width:900px){.flow{grid-template-columns:1fr}.step+.step{border-left:0;border-top:1px solid var(--rule)}.step+.step::before{content:"↓";left:18px;top:-10px;padding:0 4px}.after{grid-template-columns:1fr}}
+
+.spec{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border-top:1px solid var(--ink);margin-top:clamp(40px,5vw,64px)}
+.spec div{padding:16px 20px 18px 0;border-bottom:1px solid var(--rule);min-width:0}
+.spec div:not(:nth-child(3n+1)){padding-left:20px;border-left:1px solid var(--rule)}
+.spec dt{font-family:var(--f-mono);font-size:.7rem;letter-spacing:.08em;color:var(--muted);margin-bottom:6px}
+.spec dd{margin:0;font-size:.9rem}
+.spec dd .chipset{display:flex;flex-wrap:wrap;gap:4px 6px}
+.spec dd .chipset span{border:1px solid var(--rule-2);padding:0 6px;font-size:.8rem;background:var(--card)}
+.spec dd .chipset.test span{border-color:var(--accent);color:var(--accent)}
+@media (max-width:900px){.spec{grid-template-columns:repeat(2,minmax(0,1fr))}.spec div:not(:nth-child(3n+1)){padding-left:0;border-left:0}.spec div:nth-child(2n){padding-left:16px;border-left:1px solid var(--rule)}}
+@media (max-width:560px){.spec{grid-template-columns:1fr}.spec div:nth-child(2n){padding-left:0;border-left:0}}
+
+.guard-intro{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.6fr);gap:16px 48px;margin-top:clamp(64px,8vw,104px);margin-bottom:28px;align-items:end}
+@media (max-width:860px){.guard-intro{grid-template-columns:1fr}}
+.guard-intro h3{font-size:clamp(1.6rem,3vw,2.4rem)}
+.guard-intro p{color:var(--ink-2);max-width:62ch}
+.guards{display:grid;gap:0}
+.g-group{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,3fr);gap:16px 48px;border-top:1px solid var(--ink);padding-block:22px 6px}
+@media (max-width:860px){.g-group{grid-template-columns:1fr}}
+.g-group>header h4{font-family:var(--f-display);font-weight:500;font-size:1.25rem}
+.g-group>header p{font-size:.84rem;color:var(--muted);margin-top:6px;max-width:30ch}
+.g-list{display:grid;gap:0}
+.guard{display:grid;grid-template-columns:52px minmax(0,1fr) minmax(0,190px);gap:4px 20px;padding:14px 0 18px;border-bottom:1px solid var(--rule)}
+.guard:last-child{border-bottom:0}
+.guard .gn{font-family:var(--f-display);font-size:1.9rem;line-height:1;color:var(--accent)}
+.guard h5{margin:2px 0 6px;font-size:1rem;font-weight:600}
+.guard p{font-size:.9rem;color:var(--ink-2);max-width:64ch}
+.guard .ev{align-self:start;border-left:2px solid var(--accent);padding:2px 0 2px 12px;font-size:.8rem;color:var(--ink-2)}
+.guard .ev b{display:block;font-family:var(--f-brand);font-weight:500;font-size:1.35rem;color:var(--ink);letter-spacing:-.02em;line-height:1.15}
+.rules{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;padding:0;list-style:none;counter-reset:r}
+.rules li{counter-increment:r;font-size:.78rem;border:1px solid var(--rule-2);background:var(--card);padding:2px 8px 2px 6px}
+.rules li::before{content:counter(r);font-family:var(--f-mono);color:var(--muted);margin-right:6px;font-size:.7rem}
+@media (max-width:620px){.guard{grid-template-columns:36px minmax(0,1fr)}.guard .gn{font-size:1.5rem}.guard .ev{grid-column:2}}
+
+.mech{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;margin-top:24px}
+@media (max-width:900px){.mech{grid-template-columns:1fr}}
+.mcard{border:1px solid var(--rule-2);background:var(--card);padding:20px;min-width:0;display:flex;flex-direction:column;gap:10px}
+.mcard .who{font-family:var(--f-brand);font-weight:600;font-size:1.1rem}
+.mcard .who span{font-family:var(--f-mono);font-weight:400;font-size:.72rem;color:var(--muted);margin-left:8px}
+.mcard ul{margin:0;padding-left:18px;font-size:.88rem;color:var(--ink-2);display:grid;gap:6px}
+.mcard pre{margin:4px 0 0;font-family:var(--f-mono);font-size:.74rem;line-height:1.55;background:var(--paper);border:1px solid var(--rule);padding:10px 12px;overflow-x:auto;color:var(--ink-2)}
+
+.base-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:0 32px;margin-top:20px;border-top:1px solid var(--rule)}
+.base-list div{padding:14px 0;border-bottom:1px solid var(--rule);min-width:0}
+.base-list dt{font-weight:600;font-size:.92rem}
+.base-list dd{margin:4px 0 0;font-size:.86rem;color:var(--ink-2)}
+.base-list dd small{color:var(--muted)}
+
+/* heatmap */
+.scroll{overflow-x:auto}
+table.hm{border-collapse:separate;border-spacing:0;width:100%;font-variant-numeric:tabular-nums}
+.hm th,.hm td{padding:0;white-space:nowrap}
+.hm thead th{font-size:.76rem;font-weight:500;color:var(--ink-2);text-align:right;padding:10px 8px;border-bottom:1px solid var(--rule-2);vertical-align:bottom;background:var(--card)}
+.hm thead th.l{text-align:left;padding-left:20px}
+.hm thead th small{display:block;color:var(--muted);font-weight:400;font-size:.66rem}
+.hm thead th.sep,.hm td.sep{border-left:1px solid var(--rule-2)}
+.hm th.sortable{cursor:pointer}
+.hm th.sortable[aria-sort] span::after{content:" ↓";color:var(--accent)}
+.hm th.sortable[aria-sort="ascending"] span::after{content:" ↑"}
+.hm tbody th{text-align:left;font-weight:500;font-size:.86rem;padding:0 12px 0 20px;color:var(--ink);background:var(--card);position:sticky;left:0;z-index:1;min-width:150px}
+.hm tbody th .home{font-family:var(--f-mono);font-size:.62rem;color:var(--accent);margin-left:6px;font-weight:400}
+.hm tr.ours th{font-weight:600}
+.hm tr.grp th{font-family:var(--f-mono);font-size:.68rem;letter-spacing:.08em;color:var(--muted);font-weight:400;padding:14px 20px 4px;position:static}
+.hm td.c{font-family:var(--f-mono);font-size:.82rem;text-align:right;padding:7px 9px;border-bottom:2px solid var(--card);border-left:2px solid var(--card);color:var(--ink);cursor:default;min-width:68px}
+.hm td.c.hi{color:#fff}
+.hm td.c.best{font-weight:600;box-shadow:inset 0 0 0 2px var(--ink)}
+.hm td.c.na{color:var(--muted)}
+.hm td.c .d{display:block;font-size:.66rem;opacity:.85}
+.hm td.txt{font-size:.82rem;text-align:left;padding:7px 10px;border-bottom:1px solid var(--rule);color:var(--ink)}
+.hm tr.ref th{color:var(--ink-2)}
+.legend{display:flex;align-items:center;gap:8px;font-size:.72rem;color:var(--muted);font-family:var(--f-mono)}
+.legend .lb{width:150px;height:10px;border:1px solid var(--rule)}
+.hm-notes{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:12px 32px;margin-top:22px}
+.hm-notes p{font-size:.84rem;color:var(--ink-2)}
+.hm-notes b{color:var(--ink)}
+
+/* tooltip */
+.tip{position:fixed;z-index:50;pointer-events:none;background:var(--card);border:1px solid var(--ink);padding:9px 11px;font-size:.8rem;box-shadow:0 8px 24px #1c282b1f;max-width:290px;line-height:1.5}
+.tip b{font-weight:600}
+.tip .k{color:var(--muted)}
+.tip .num{font-family:var(--f-mono)}
+
+footer.site{padding-block:40px 56px;font-size:.82rem;color:var(--muted)}
+footer.site .wrap{display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px 32px}
+footer.site b{font-family:var(--f-brand);color:var(--ink);font-weight:600}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<header class="site-header">
+  <div class="wrap">
+    <a class="brand" href="#top"><b>JAMS</b><span>LLM → Jev 中间层搜索</span></a>
+    <nav class="nav" aria-label="页面导航">
+      <a href="#results">主结果</a><a href="#method">方法</a><a href="#breakdown">分项结果</a>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+<section class="hero">
+  <div class="wrap">
+    <div class="hero-grid">
+      <div>
+        <p class="eyebrow">Training-free · LLM → Jev · 2026.11</p>
+        <p class="wordmark"><span class="j">J</span>AMS</p>
+        <p class="expand"><u>J</u>udge-gated <u>A</u>gentic <u>M</u>iddleware <u>S</u>earch</p>
+        <h1>让 agent 从空白写出 LLM→Jev 中间层，再用没见过的场景和模型检验它</h1>
+        <p class="lead">把一个指令模型接到 Jev 决策 API 上，要写一层"中间层"：把请求变成 prompt，再把模型输出变成每道题的概率分布。JAMS 让代码 agent 直接改写这一整层，每份代码先过 judge 和人工复核，再按准确率与用时选优。搜索只用 Qwen3.5-4B / 9B 和 6 个训练场景，得到的代码冻结后，原样跑在另外 6 个测试场景、6 个模型上。</p>
+      </div>
+      <figure class="contract" aria-label="中间层接口">
+        <div class="contract-head"><span>middleware.py</span><span>搜索对象</span></div>
+<pre><span class="k">async def</span> decide(request, llm):
+    <span class="c"># request.state      任意上下文</span>
+    <span class="c"># request.questions  Choice/Noul/Score</span>
+    ...
+    <span class="k">return</span> JevResponse(...)
+    <span class="c"># 每道题在全部选项上的概率分布</span>
+
+<span class="c"># llm 只开放三个调用</span>
+llm.chat_completions(...)  <span class="c"># 生成</span>
+llm.generate(...,          <span class="c"># 读 logprob</span>
+    max_new_tokens=<span class="s">0</span>)
+llm.tokenize(...)</pre>
+      </figure>
+    </div>
+    <div class="stats" role="list">
+      <div class="stat" role="listitem"><p class="n">6<small>/ 6</small></p><p class="l">JAMS-9B 在全部 6 个模型上宏平均第一，包括 4 个从没参与搜索的模型</p></div>
+      <div class="stat" role="listitem"><p class="n">61.8</p><p class="l">6 个模型的平均宏平均分，最强现成方法为 57.8（Chat 直接生成）</p></div>
+      <div class="stat" role="listitem"><p class="n">+6.8<small>pp</small></p><p class="l">相对 LLM2Jev；5 个小模型上的 95% 区间全部大于 0</p></div>
+      <div class="stat" role="listitem"><p class="n">5.2<small>×</small></p><p class="l">比 LLM2Jev 快，按 6 个模型的用时几何平均</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="block" id="results">
+  <div class="wrap">
+    <div class="sec-head">
+      <div><p class="sec-num">01</p><h2>主结果</h2></div>
+      <p>6 个测试场景的等权宏平均。比较对象是 5 个现成的 training-free LLM→Jev 方法，全部在同一接口、同一份模型权重上重新跑过。JAMS 的三个版本都没有在这些场景上搜索过，其中 4 个模型也没有参与过搜索。</p>
+    </div>
+
+    <div class="controls">
+      <div class="ctl"><span class="ctl-label">模型</span><div class="seg" id="bar-seg" role="group" aria-label="选择模型"></div></div>
+    </div>
+    <div class="panel">
+      <div class="panel-head">
+        <div><p class="panel-title" id="bar-title"></p><p class="panel-note" id="bar-note"></p></div>
+        <div class="key"><span><i style="background:var(--accent)"></i>JAMS（本文）</span><span><i style="background:var(--base)"></i>现成方法</span><span><i style="border:1.5px dashed var(--ink-2);background:transparent"></i>最强现成方法</span></div>
+      </div>
+      <div class="bars" id="bars"></div>
+      <div class="bar-foot"><span>分数：6 场景宏平均（%）</span><span>用时：秒/题 ÷ 同一模型上的 LLM2Jev，越小越快</span><span>AnyJev 最多支持 26 个选项，CLINC（151 个选项）记 0 分</span></div>
+    </div>
+
+    <div class="two">
+      <div class="panel">
+        <div class="panel-head">
+          <div><p class="panel-title">JAMS-9B 领先多少：配对差值与 95% 区间</p><p class="panel-note" id="forest-note"></p></div>
+          <div class="seg" id="forest-seg" role="group" aria-label="对比对象">
+            <button type="button" data-f="best">对比最强现成方法</button>
+            <button type="button" data-f="llm2jev">对比 LLM2Jev</button>
+          </div>
+        </div>
+        <div class="forest" id="forest"></div>
+        <div class="bar-foot"><span>整 case 配对 bootstrap，1000 次重采样，单次运行</span><span>空心点：区间跨过 0</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="block" id="method">
+  <div class="wrap">
+    <div class="sec-head">
+      <div><p class="sec-num">02</p><h2>我们怎么做的</h2></div>
+      <p>JAMS 是一个 GEPA 式的进化搜索，只是被改写的不再是一段提示词，而是整份 <code>middleware.py</code>。每一轮由代码 agent 读训练小批上的反馈，写出一份新的中间层；judge 判它有没有走捷径，通过的才去跑 validation；最后在准确率和用时的 Pareto 前沿上选父候选，进入下一轮。</p>
+    </div>
+
+    <div class="flow" role="list">
+      <div class="step" role="listitem"><p class="no">STEP 1</p><h4>抽训练小批</h4><p>从 6 个训练场景里随机挑 3 个，抽 128 个 case 作为本轮反馈。</p></div>
+      <div class="step" role="listitem"><p class="no">STEP 2</p><h4>代码 agent 改写</h4><p>Claude Code（DeepSeek-V4.1-Flash 驱动），每轮全新 session。可以在小批上调用真实模型自测。</p></div>
+      <div class="step gate" role="listitem"><p class="no">STEP 3 · GATE</p><h4>Judge agent 审代码</h4><p>glm-5.3-flash 驱动，只看代码和规则，用 mock 模型跑扰动探针。判 fail 就打回重写，最多 3 次。</p></div>
+      <div class="step" role="listitem"><p class="no">STEP 4</p><h4>完整 validation</h4><p>6 个训练场景的 validation 全部跑完，记录准确率和秒/题。</p></div>
+      <div class="step" role="listitem"><p class="no">STEP 5</p><h4>Pareto 选父</h4><p>在 {准确率, 用时} 的前沿上挑下一轮的父候选。</p></div>
+    </div>
+    <div class="loop"><span>↺ 回到 STEP 1，<b>30 轮</b>（Qwen3.5-9B 跑满 30 轮，Qwen3.5-4B 按人工决定在第 24 轮截断），单 seed</span><span>第 1 轮没有父候选，从空白开始</span></div>
+    <div class="after">
+      <div><b>选出两个版本</b>JAMS（G_iso）：用时不超过 LLM2Jev 的候选里，validation 准确率最高的一份。JAMS-fast（G_fast）：准确率不低于 LLM2Jev 的候选里最快的一份。</div>
+      <div><b>冻结 + 人工复核</b>代码 hash 冻结，再按 10 条规则逐行人工复核。没通过的不进入测试（见下方第 07 条）。</div>
+      <div><b>场景外 × 模型外</b>原样跑在 6 个测试场景、6 个模型上，与 5 个现成方法对比。</div>
+    </div>
+
+    <dl class="spec">
+      <div><dt>搜索模型</dt><dd>Qwen3.5-4B、Qwen3.5-9B，各搜一次，得到 JAMS-4B / JAMS-4B-fast / JAMS-9B</dd></div>
+      <div><dt>训练 + validation 场景</dt><dd><span class="chipset"><span>BFCL</span><span>API-Bank</span><span>BANKING77</span><span>SGD</span><span>NLI4CT</span><span>RAGTruth</span></span></dd></div>
+      <div><dt>测试场景（搜索期间不挂载）</dt><dd><span class="chipset test"><span>When2Call</span><span>CLINC150+OOS</span><span>HoVer</span><span>PhishNChips</span><span>home-appliance</span><span>JevBench</span></span></dd></div>
+      <div><dt>测试规模</dt><dd>5 个场景 864 个 case、1956 道题（每个场景抽子集），另加 JevBench 231 题</dd></div>
+      <div><dt>评估模型</dt><dd>Qwen3.5-4B / 9B / 27B、Qwen3-8B、Qwen3-4B-Instruct-2507、gemma-4-E4B-it；全部用 SGLang 部署，所有方法共用同一个服务</dd></div>
+      <div><dt>主指标</dt><dd>6 个测试场景等权宏平均。CLINC 用 macro-F1；home-appliance 要求整个 case 全对</dd></div>
+      <div><dt>统计</dt><dd>整 case 配对 bootstrap，1000 次重采样，报告 95% 区间</dd></div>
+      <div><dt>用时</dt><dd>秒/题 ÷ 同一模型上 LLM2Jev 的秒/题</dd></div>
+      <div><dt>超时</dt><dd>某格超过 1% 的题超时，该模型上所有方法统一按 1800 秒补跑一次</dd></div>
+    </dl>
+
+    <div class="guard-intro">
+      <div><p class="sec-num">02 · B</p><h3>为了不 hack，我们做了什么</h3></div>
+      <p>让 agent 直接写代码，最大的风险是它会写出只对评测集有效的捷径：认出数据集、硬编码规则、让模型走个过场。我们的前一版实验就出现过这种情况，提升里有很大一部分来自这类捷径。所以 JAMS 的大部分设计都花在堵这些路上。下面 10 条按作用分三组。</p>
+    </div>
+
+    <div class="guards">
+      <div class="g-group">
+        <header><h4>不让它看到测试</h4><p>搜索过程拿不到任何测试场景的信息，也认不出题目来自哪个数据集。</p></header>
+        <div class="g-list">
+          <div class="guard"><span class="gn">01</span><div><h5>按场景切分，而不是按样本切分</h5><p>12 个场景分成两组，互不重叠。搜索只用 6 个训练场景，测试用另外 6 个，测试数据在搜索期间根本不挂载到容器里。这样测出的是"换一个全新任务还能不能用"，而不是同一个数据集的另一批样本。</p></div><p class="ev"><b>0</b>个场景同时出现在搜索和测试里</p></div>
+          <div class="guard"><span class="gn">02</span><div><h5>从空白开始，不给种子</h5><p>第 1 轮没有父候选，agent 只拿到接口说明和训练小批，连 LLM2Jev 的做法都不给。LLM2Jev 只在最后当对照。</p></div><p class="ev"><b>0</b>行初始代码</p></div>
+          <div class="guard"><span class="gn">03</span><div><h5>反馈去掉来源</h5><p>agent 看到的训练反馈里删掉了 source 字段，case_id 也换成不透明编号。它不知道某道题来自哪个数据集，也就没法写"如果是 BANKING77 就怎样"。</p></div><p class="ev"><b>source</b>字段删除，编号不透明</p></div>
+        </div>
+      </div>
+
+      <div class="g-group">
+        <header><h4>不让它走捷径</h4><p>写清楚什么不许做，再用 agent 和人两道关去查。</p></header>
+        <div class="g-list">
+          <div class="guard"><span class="gn">04</span><div><h5>10 条写死的禁止项</h5><p>每轮的任务说明里都写明：答案必须来自模型自己的输出，中间层只能按题型和选项数这类结构分支。</p>
+            <ol class="rules"><li>绕过模型直接出答案</li><li>按内容分支</li><li>领域词表</li><li>领域化 prompt</li><li>记忆训练样本</li><li>表面启发式</li><li>结构指纹</li><li>规则做决定、模型走过场</li><li>跨请求传递信息</li><li>绕过 harness 限制</li></ol></div><p class="ev"><b>10</b>条规则，任何一条不过即拒</p></div>
+          <div class="guard"><span class="gn">05</span><div><h5>Judge 是一个会动手的 agent</h5><p>judge 不只读代码：它用 mock 模型在虚构请求上跑候选，再改字段名、换说法、打乱选项顺序，看调用结构会不会跟着内容变。判不准（uncertain）也按 fail 处理。它看不到任何数据、分数，也看不到写代码 agent 的过程记录。</p></div><p class="ev"><b>3</b>种扰动探针；uncertain = fail</p></div>
+          <div class="guard"><span class="gn">06</span><div><h5>Judge 先校准，再冻结</h5><p>正式搜索前，拿前一版实验的 26 份 hack 候选和 3 份手写的通用实现去测 judge。26 份必须全判 fail，3 份必须全判 pass，达标后冻结 prompt、rubric 和 hash，搜索中途不再改。</p></div><p class="ev"><b>26/26 · 3/3</b>hack 全拦下，通用实现全放行</p></div>
+          <div class="guard"><span class="gn">07</span><div><h5>最终候选逐条人工复核</h5><p>选出来的每份代码都按 10 条规则对着行号复核。9B 的 fast 版本靠"按选项长度打破平局"取巧，违反第 6 条，被剔除，不出现在本页任何结果里。4B 搜索第 17 轮的一份候选也被查出：模型输出无法解析时固定返回 0.55，而不是中性的 0.5。</p></div><p class="ev"><b>1</b>个最终候选被剔除</p></div>
+        </div>
+      </div>
+
+      <div class="g-group">
+        <header><h4>让对比公平</h4><p>现成方法不是抄论文里的数字，而是放进同一个框架里重新跑。</p></header>
+        <div class="g-list">
+          <div class="guard"><span class="gn">08</span><div><h5>冻结代码，换模型直接跑</h5><p>只在 Qwen3.5-4B / 9B 上搜索。代码冻结后，原样跑到 Qwen3-8B、Qwen3-4B-Instruct、gemma-4-E4B 和 Qwen3.5-27B 上，不针对新模型做任何调整。</p></div><p class="ev"><b>4</b>个模型从没参与过搜索</p></div>
+          <div class="guard"><span class="gn">09</span><div><h5>现成方法放进同一接口</h5><p>5 个现成方法都移植成同一个 <code>decide(request, llm)</code>，共用同一个模型服务和计时方式。jev-local 需要 prompt logprob，我们单独为它打开了这个权限，JAMS 没有。AnyJev 默认用跨请求的 batch 先验，这违反 JAMS 自己也要遵守的第 9 条，所以换成上游提供的 content_free 先验。</p></div><p class="ev"><b>同一</b>服务 · 同一权重 · 同一计时</p></div>
+          <div class="guard"><span class="gn">10</span><div><h5>标准先写定，区间一起报</h5><p>"比 LLM2Jev 好"的判断标准在搜索开始前写进 issue。每个比较都报告整 case 配对 bootstrap 的 95% 区间；超时补跑对所有方法一视同仁。</p></div><p class="ev"><b>1000</b>次配对重采样</p></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="guard-intro">
+      <div><p class="sec-num">02 · C</p><h3>agent 写出了什么</h3></div>
+      <p>三份代码都没有任何场景相关的分支，靠的是几种通用做法：把选项编成字母放进同一页，读一次下一个 token 的概率；长列表先粗筛再复评；用多种选项顺序抵消位置偏置。下面是 judge 和人工复核记录里写的机制。</p>
+    </div>
+    <div class="mech">
+      <article class="mcard"><p class="who">JAMS-9B<span>G_iso · 搜索于 Qwen3.5-9B</span></p>
+        <ul><li><b>字母页 + 一次读分布</b>：选项编成 A、B、C… 放进一页，读一次下一个 token 的概率，得到全部选项的分布。</li><li><b>顺序平均</b>：同一页按不同选项顺序各打一次再取平均，抵消模型偏爱某个位置的倾向。</li><li><b>短名单复评</b>：长列表先整页粗筛，再把前几名放到一张短页上重打。</li></ul>
+<pre>page = "A. …\nB. …\nC. …\nAnswer:"
+p = mean(score(page, order)
+         for order in orders)
+top = shortlist(p) → rescore(top)</pre></article>
+      <article class="mcard"><p class="who">JAMS-4B<span>G_iso · 搜索于 Qwen3.5-4B</span></p>
+        <ul><li><b>三路信号</b>：先让模型贪心生成它认为最好的选项；再读单符号编号的分布作为粗分布；最后对最有希望的 12 个选项聚焦复评。</li><li><b>对数线性校准</b>：模型自己点名的选项在 log 空间加权，并保留 1% 残差给全部选项，结果仍是合法分布。</li><li>大选项集分批召回，调用数有上限。</li></ul>
+<pre>pick   = generate(prompt)
+coarse = score(all options)
+focus  = score(top-12 ∪ {pick})
+p = calibrate(focus, pick)
+    + 0.01 · coarse</pre></article>
+      <article class="mcard"><p class="who">JAMS-4B-fast<span>G_fast · 搜索于 Qwen3.5-4B</span></p>
+        <ul><li><b>单 token 编号打分</b>：一次前向读出所有编号的概率。</li><li><b>分块锦标赛</b>：选项多时分块打分，再对胜出者聚焦复评。</li><li>Noul 题读 true / false 两极的 token 概率并做单调校准；出错时回退到 0.5。</li></ul>
+<pre>for chunk in chunks(options):
+    keep += top_k(score(chunk))
+p = score(keep)          # 聚焦复评
+noul = mono(P(true))</pre></article>
+    </div>
+
+    <div class="guard-intro">
+      <div><p class="sec-num">02 · D</p><h3>对比的现成方法</h3></div>
+      <p>这些方法都来自已发表的论文、开源仓库或推理框架自带的接口，没有我们自己发明的基线。</p>
+    </div>
+    <dl class="base-list">
+      <div><dt>LLM2Jev</dt><dd>每个选项单独问一次 yes/no，再归一化，N 个选项调用 N 次。也是搜索时的对照基线 M₀。</dd></div>
+      <div><dt>SGLang decisions</dt><dd>SGLang 自带的 <code>/v1/decisions</code>：选项编成字母放进同一个 prompt，读一次字母概率；超过 26 个选项用 AA、AB 这样的双字母。</dd></div>
+      <div><dt>AnyJev（L0）</dt><dd>选项轮换 K 次后取平均，再除掉标签先验。先验用 content_free 模式估计，不跨请求。<small>最多支持 26 个选项。</small></dd></div>
+      <div><dt>Chat 直接生成</dt><dd>来自 LLM-as-Jev 的生成模式：选项编号，让模型通过 chat 接口贪心生成编号，答案取 one-hot。</dd></div>
+      <div><dt>jev-local</dt><dd>每个选项单独算一次文本的平均 logprob，除以温度后做 softmax。默认不套 chat template。</dd></div>
+    </dl>
+  </div>
+</section>
+
+<section class="block" id="breakdown">
+  <div class="wrap">
+    <div class="sec-head">
+      <div><p class="sec-num">03</p><h2>分项结果</h2></div>
+      <p>8 个方法 × 6 个模型 × 6 个测试场景。默认按相对同一模型上 LLM2Jev 的差着色：蓝色更高，红色更低；每列最好的值加粗框出。把鼠标放在格子上（手机上点一下）可以看到排名和用时。</p>
+    </div>
+    <div class="controls" role="group" aria-label="视图设置">
+      <div class="ctl"><span class="ctl-label">视图</span>
+        <div class="seg" id="view-seg">
+          <button type="button" data-v="model">按模型</button>
+          <button type="button" data-v="metric">按场景</button>
+          <button type="button" data-v="all">全部 48 行</button>
+        </div>
+      </div>
+      <div class="ctl"><span class="ctl-label">着色</span>
+        <div class="seg" id="color-seg">
+          <button type="button" data-c="delta">相对 LLM2Jev</button>
+          <button type="button" data-c="abs">原始分数</button>
+        </div>
+      </div>
+      <div class="ctl" id="pick-ctl"><span class="ctl-label" id="pick-label">模型</span><div class="seg" id="chips"></div></div>
+    </div>
+    <div class="panel">
+      <div class="panel-head">
+        <div><p class="panel-title" id="sheet-title"></p><p class="panel-note" id="sheet-note"></p></div>
+        <div class="legend" id="legend"></div>
+      </div>
+      <div class="scroll"><table class="hm" id="tbl"></table></div>
+    </div>
+    <div class="hm-notes">
+      <p><b>When2Call</b>：工具调用决策，4 选 1。<b>CLINC</b>：意图分类，151 个选项（含 out-of-scope），用 macro-F1，每个类别等权。<b>HoVer</b>：多跳事实核查，二选一。<b>PhishNChips</b>：钓鱼邮件识别，二选一。</p>
+      <p><b>home-appliance</b>：一个 case 有多道题，要求全部答对才得分，所有方法都只有 0 到 47 分，会把宏平均整体拉低。"去 home 5 场景"一列去掉了这一项。<b>JevBench</b>：231 道 Jev 原生题。</p>
+      <p><b>"搜索模型"</b>标记表示这份 JAMS 代码当初就是在这个模型上搜出来的；即便如此，测试场景它也没见过。所有数字来自单次运行。</p>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer class="site">
+  <div class="wrap">
+    <p><b>JAMS</b> · Judge-gated Agentic Middleware Search</p>
+    <p>单 seed，单次运行；测试集为各场景的子集。数据截至 2026-11-11。</p>
+  </div>
+</footer>
+<div class="tip" id="tip" hidden></div>
+
+<script>
+const DATA=[{"model":"Qwen3.5-4B","m":"jams4b","when2call":61.5,"clinc":80.4,"hover":62.5,"phish":71.5,"home":6.25,"jevbench":77.06,"macro6":59.87,"macro5":70.59,"tratio":0.494,"spq":0.0726},{"model":"Qwen3.5-4B","m":"jams4bfast","when2call":60.5,"clinc":75.57,"hover":63.5,"phish":73.0,"home":6.25,"jevbench":75.33,"macro6":59.02,"macro5":69.58,"tratio":0.114,"spq":0.0167},{"model":"Qwen3.5-4B","m":"jams9b","when2call":76.0,"clinc":81.42,"hover":64.5,"phish":68.5,"home":10.94,"jevbench":77.92,"macro6":63.21,"macro5":73.67,"tratio":0.181,"spq":0.0266},{"model":"Qwen3.5-4B","m":"sglang","when2call":58.5,"clinc":65.07,"hover":65.0,"phish":71.0,"home":0.0,"jevbench":79.65,"macro6":56.54,"macro5":67.84,"tratio":0.892,"spq":0.1311},{"model":"Qwen3.5-4B","m":"chat","when2call":61.5,"clinc":69.33,"hover":64.5,"phish":70.0,"home":7.81,"jevbench":78.36,"macro6":58.58,"macro5":68.74,"tratio":0.112,"spq":0.0165},{"model":"Qwen3.5-4B","m":"jevlocal","when2call":40.5,"clinc":72.96,"hover":51.0,"phish":53.0,"home":0.0,"jevbench":67.97,"macro6":47.57,"macro5":57.09,"tratio":1.208,"spq":0.1776},{"model":"Qwen3.5-4B","m":"anyjev","when2call":72.0,"clinc":0.0,"hover":57.5,"phish":52.5,"home":0.0,"jevbench":75.76,"macro6":42.96,"macro5":51.55,"tratio":1.62,"spq":0.2382},{"model":"Qwen3.5-4B","m":"llm2jev","when2call":48.5,"clinc":73.47,"hover":67.5,"phish":65.5,"home":0.0,"jevbench":75.33,"macro6":55.05,"macro5":66.06,"tratio":1.0,"spq":0.1471},{"model":"Qwen3.5-9B","m":"jams4b","when2call":70.0,"clinc":79.31,"hover":65.0,"phish":62.5,"home":10.94,"jevbench":79.22,"macro6":61.16,"macro5":71.21,"tratio":0.444,"spq":0.0911},{"model":"Qwen3.5-9B","m":"jams4bfast","when2call":70.5,"clinc":76.49,"hover":65.0,"phish":67.5,"home":15.62,"jevbench":80.09,"macro6":62.53,"macro5":71.92,"tratio":0.129,"spq":0.0265},{"model":"Qwen3.5-9B","m":"jams9b","when2call":75.0,"clinc":83.03,"hover":65.0,"phish":67.5,"home":12.5,"jevbench":79.65,"macro6":63.78,"macro5":74.04,"tratio":0.183,"spq":0.0375},{"model":"Qwen3.5-9B","m":"sglang","when2call":61.0,"clinc":65.46,"hover":66.0,"phish":69.0,"home":10.94,"jevbench":82.25,"macro6":59.11,"macro5":68.74,"tratio":0.688,"spq":0.1411},{"model":"Qwen3.5-9B","m":"chat","when2call":60.0,"clinc":69.95,"hover":63.5,"phish":64.0,"home":12.5,"jevbench":81.82,"macro6":58.63,"macro5":67.85,"tratio":0.111,"spq":0.0228},{"model":"Qwen3.5-9B","m":"jevlocal","when2call":45.0,"clinc":72.47,"hover":62.5,"phish":62.5,"home":3.12,"jevbench":75.33,"macro6":53.49,"macro5":63.56,"tratio":1.083,"spq":0.2222},{"model":"Qwen3.5-9B","m":"anyjev","when2call":76.0,"clinc":0.0,"hover":62.5,"phish":54.0,"home":12.5,"jevbench":78.36,"macro6":47.23,"macro5":54.17,"tratio":1.287,"spq":0.2641},{"model":"Qwen3.5-9B","m":"llm2jev","when2call":46.5,"clinc":74.65,"hover":65.5,"phish":58.0,"home":0.0,"jevbench":77.06,"macro6":53.62,"macro5":64.34,"tratio":1.0,"spq":0.2052},{"model":"Qwen3-8B","m":"jams4b","when2call":57.5,"clinc":70.84,"hover":58.5,"phish":56.5,"home":7.81,"jevbench":65.8,"macro6":52.83,"macro5":61.83,"tratio":0.32,"spq":0.0258},{"model":"Qwen3-8B","m":"jams4bfast","when2call":53.0,"clinc":68.9,"hover":59.5,"phish":57.5,"home":0.0,"jevbench":70.56,"macro6":51.58,"macro5":61.89,"tratio":0.162,"spq":0.0131},{"model":"Qwen3-8B","m":"jams9b","when2call":69.5,"clinc":70.39,"hover":59.5,"phish":54.5,"home":4.69,"jevbench":71.43,"macro6":55.0,"macro5":65.06,"tratio":0.257,"spq":0.0207},{"model":"Qwen3-8B","m":"sglang","when2call":56.0,"clinc":65.05,"hover":60.5,"phish":52.0,"home":4.69,"jevbench":68.4,"macro6":51.11,"macro5":60.39,"tratio":1.61,"spq":0.1299},{"model":"Qwen3-8B","m":"chat","when2call":52.5,"clinc":24.25,"hover":59.0,"phish":55.5,"home":12.5,"jevbench":74.46,"macro6":46.37,"macro5":53.14,"tratio":0.174,"spq":0.0141},{"model":"Qwen3-8B","m":"jevlocal","when2call":54.5,"clinc":65.41,"hover":62.0,"phish":59.0,"home":3.12,"jevbench":69.26,"macro6":52.22,"macro5":62.03,"tratio":2.003,"spq":0.1615},{"model":"Qwen3-8B","m":"anyjev","when2call":61.0,"clinc":0.0,"hover":55.0,"phish":51.0,"home":0.0,"jevbench":71.86,"macro6":39.81,"macro5":47.77,"tratio":2.836,"spq":0.2287},{"model":"Qwen3-8B","m":"llm2jev","when2call":52.0,"clinc":67.04,"hover":57.0,"phish":51.5,"home":0.0,"jevbench":65.8,"macro6":48.89,"macro5":58.67,"tratio":1.0,"spq":0.0807},{"model":"Qwen3-4B-Instruct-2507","m":"jams4b","when2call":66.5,"clinc":69.64,"hover":64.5,"phish":53.5,"home":12.5,"jevbench":66.67,"macro6":55.55,"macro5":64.16,"tratio":0.253,"spq":0.0191},{"model":"Qwen3-4B-Instruct-2507","m":"jams4bfast","when2call":69.5,"clinc":63.83,"hover":66.0,"phish":52.5,"home":10.94,"jevbench":70.13,"macro6":55.48,"macro5":64.39,"tratio":0.127,"spq":0.0096},{"model":"Qwen3-4B-Instruct-2507","m":"jams9b","when2call":67.5,"clinc":70.62,"hover":66.0,"phish":53.5,"home":10.94,"jevbench":70.56,"macro6":56.52,"macro5":65.64,"tratio":0.165,"spq":0.0125},{"model":"Qwen3-4B-Instruct-2507","m":"sglang","when2call":53.5,"clinc":67.42,"hover":70.0,"phish":52.5,"home":9.38,"jevbench":69.26,"macro6":53.68,"macro5":62.54,"tratio":1.59,"spq":0.12},{"model":"Qwen3-4B-Instruct-2507","m":"chat","when2call":61.0,"clinc":54.66,"hover":65.5,"phish":53.5,"home":9.38,"jevbench":71.43,"macro6":52.58,"macro5":61.22,"tratio":0.205,"spq":0.0155},{"model":"Qwen3-4B-Instruct-2507","m":"jevlocal","when2call":51.0,"clinc":58.29,"hover":65.0,"phish":51.5,"home":0.0,"jevbench":68.83,"macro6":49.1,"macro5":58.92,"tratio":2.114,"spq":0.1596},{"model":"Qwen3-4B-Instruct-2507","m":"anyjev","when2call":58.0,"clinc":0.0,"hover":61.5,"phish":52.5,"home":0.0,"jevbench":68.4,"macro6":40.07,"macro5":48.08,"tratio":3.001,"spq":0.2265},{"model":"Qwen3-4B-Instruct-2507","m":"llm2jev","when2call":45.5,"clinc":71.03,"hover":53.5,"phish":50.5,"home":0.0,"jevbench":67.53,"macro6":48.01,"macro5":57.61,"tratio":1.0,"spq":0.0755},{"model":"gemma-4-E4B-it","m":"jams4b","when2call":61.5,"clinc":78.08,"hover":60.5,"phish":54.5,"home":9.38,"jevbench":75.76,"macro6":56.62,"macro5":66.07,"tratio":0.429,"spq":0.0386},{"model":"gemma-4-E4B-it","m":"jams4bfast","when2call":63.5,"clinc":71.36,"hover":60.5,"phish":55.0,"home":21.88,"jevbench":77.49,"macro6":58.29,"macro5":65.57,"tratio":0.135,"spq":0.0121},{"model":"gemma-4-E4B-it","m":"jams9b","when2call":63.0,"clinc":80.42,"hover":63.5,"phish":57.0,"home":20.31,"jevbench":77.06,"macro6":60.21,"macro5":68.19,"tratio":0.224,"spq":0.0201},{"model":"gemma-4-E4B-it","m":"sglang","when2call":52.5,"clinc":70.87,"hover":60.5,"phish":55.0,"home":9.38,"jevbench":77.92,"macro6":54.36,"macro5":63.36,"tratio":1.062,"spq":0.0955},{"model":"gemma-4-E4B-it","m":"chat","when2call":58.5,"clinc":76.76,"hover":65.0,"phish":57.0,"home":23.44,"jevbench":79.22,"macro6":59.99,"macro5":67.3,"tratio":0.153,"spq":0.0137},{"model":"gemma-4-E4B-it","m":"jevlocal","when2call":12.5,"clinc":11.22,"hover":49.5,"phish":50.0,"home":0.0,"jevbench":32.9,"macro6":26.02,"macro5":31.22,"tratio":1.469,"spq":0.1321},{"model":"gemma-4-E4B-it","m":"anyjev","when2call":65.0,"clinc":0.0,"hover":55.5,"phish":52.0,"home":14.06,"jevbench":74.89,"macro6":43.58,"macro5":49.48,"tratio":2.543,"spq":0.2287},{"model":"gemma-4-E4B-it","m":"llm2jev","when2call":55.5,"clinc":71.11,"hover":61.5,"phish":51.0,"home":7.81,"jevbench":75.76,"macro6":53.78,"macro5":62.97,"tratio":1.0,"spq":0.0899},{"model":"Qwen3.5-27B","m":"llm2jev","when2call":79.0,"clinc":86.55,"hover":74.0,"phish":66.0,"home":32.81,"jevbench":86.15,"macro6":70.75,"macro5":78.34,"tratio":1.0,"spq":0.5745},{"model":"Qwen3.5-27B","m":"sglang","when2call":81.0,"clinc":83.98,"hover":71.0,"phish":57.5,"home":29.69,"jevbench":87.01,"macro6":68.36,"macro5":76.1,"tratio":0.214,"spq":0.123},{"model":"Qwen3.5-27B","m":"anyjev","when2call":80.5,"clinc":0.0,"hover":65.0,"phish":62.0,"home":32.81,"jevbench":83.98,"macro6":54.05,"macro5":58.3,"tratio":0.682,"spq":0.3919},{"model":"Qwen3.5-27B","m":"chat","when2call":77.5,"clinc":86.38,"hover":73.0,"phish":59.0,"home":42.19,"jevbench":85.71,"macro6":70.63,"macro5":76.32,"tratio":0.097,"spq":0.056},{"model":"Qwen3.5-27B","m":"jevlocal","when2call":78.0,"clinc":87.18,"hover":67.0,"phish":61.5,"home":29.69,"jevbench":81.39,"macro6":67.46,"macro5":75.01,"tratio":0.551,"spq":0.3164},{"model":"Qwen3.5-27B","m":"jams4b","when2call":81.0,"clinc":86.6,"hover":77.0,"phish":58.0,"home":42.19,"jevbench":83.98,"macro6":71.46,"macro5":77.32,"tratio":0.357,"spq":0.205},{"model":"Qwen3.5-27B","m":"jams4bfast","when2call":81.5,"clinc":81.01,"hover":69.0,"phish":57.0,"home":45.31,"jevbench":84.85,"macro6":69.78,"macro5":74.67,"tratio":0.106,"spq":0.0611},{"model":"Qwen3.5-27B","m":"jams9b","when2call":85.5,"clinc":83.79,"hover":75.5,"phish":53.5,"home":46.88,"jevbench":87.45,"macro6":72.1,"macro5":77.15,"tratio":0.163,"spq":0.0938}];
+const MODELS=["Qwen3.5-4B","Qwen3.5-9B","Qwen3-8B","Qwen3-4B-Instruct-2507","gemma-4-E4B-it","Qwen3.5-27B"];
+const SHORT={"Qwen3-4B-Instruct-2507":"Qwen3-4B-Inst","gemma-4-E4B-it":"gemma-4-E4B"};
+const sn=m=>SHORT[m]||m;
+const METH=[
+  {id:"jams9b",name:"JAMS-9B",ours:true,home:"Qwen3.5-9B"},
+  {id:"jams4b",name:"JAMS-4B",ours:true,home:"Qwen3.5-4B"},
+  {id:"jams4bfast",name:"JAMS-4B-fast",ours:true,home:"Qwen3.5-4B"},
+  {id:"chat",name:"Chat 直接生成"},
+  {id:"sglang",name:"SGLang decisions"},
+  {id:"llm2jev",name:"LLM2Jev",ref:true},
+  {id:"jevlocal",name:"jev-local"},
+  {id:"anyjev",name:"AnyJev"}];
+const MM=Object.fromEntries(METH.map(m=>[m.id,m]));
+const get=(model,id)=>DATA.find(r=>r.model===model&&r.m===id);
+const mean=a=>a.reduce((s,x)=>s+x,0)/a.length;
+const gmean=a=>Math.exp(mean(a.map(Math.log)));
+const f1=v=>v.toFixed(1);
+const sgn=d=>(d>0?"+":d<0?"−":"±")+Math.abs(d).toFixed(1);
+const tip=document.getElementById("tip");
+function showTip(e,html){tip.innerHTML=html;tip.hidden=false;const w=tip.offsetWidth,h=tip.offsetHeight;let x=e.clientX+14,y=e.clientY+14;if(x+w>innerWidth-8)x=e.clientX-w-14;if(y+h>innerHeight-8)y=e.clientY-h-14;tip.style.left=Math.max(8,x)+"px";tip.style.top=Math.max(8,y)+"px";}
+function hideTip(){tip.hidden=true;}
+function store(k,v){try{if(v===undefined)return JSON.parse(localStorage.getItem(k)||"null");localStorage.setItem(k,JSON.stringify(v));}catch(e){return null;}}
+
+/* ---------- 01 bar chart ---------- */
+const BMAX=80, BTICKS=[0,20,40,60,80];
+let barView=store("jams.bar")||"avg";
+function barRows(view){
+  if(view==="avg")return METH.map(m=>{const rs=MODELS.map(md=>get(md,m.id));return{id:m.id,v:mean(rs.map(r=>r.macro6)),t:gmean(rs.map(r=>r.tratio))};});
+  return METH.map(m=>{const r=get(view,m.id);return{id:m.id,v:r.macro6,t:r.tratio,r};});
+}
+function renderBarSeg(){
+  const seg=document.getElementById("bar-seg");seg.innerHTML="";
+  [["avg","6 模型平均"],...MODELS.map(m=>[m,sn(m)])].forEach(([v,t])=>{const b=document.createElement("button");b.type="button";b.textContent=t;b.setAttribute("aria-pressed",barView===v);b.onclick=()=>{barView=v;store("jams.bar",v);renderBars();};seg.appendChild(b);});
+}
+const barEls={};
+function renderBars(){
+  renderBarSeg();
+  const rows=barRows(barView).sort((a,b)=>b.v-a.v);
+  const base=rows.filter(r=>!MM[r.id].ours);const bestB=base.reduce((a,b)=>b.v>a.v?b:a);
+  const llm=rows.find(r=>r.id==="llm2jev");
+  const box=document.getElementById("bars");
+  if(!box.dataset.init){
+    box.dataset.init=1;
+    const ax=document.createElement("div");ax.className="bar-axis";ax.setAttribute("aria-hidden","true");
+    ax.innerHTML='<span></span><div class="ticks">'+BTICKS.map(t=>`<span style="left:${t/BMAX*100}%">${t}</span>`).join("")+'</div><span class="h">分数</span><span class="h">用时</span>';
+    box.appendChild(ax);
+    METH.forEach(m=>{const row=document.createElement("div");row.className="bar-row"+(m.ours?" ours":"")+(m.ref?" ref-row":"");
+      row.innerHTML=`<div class="bar-name">${m.name}${m.ours?'<span class="tag">本文</span>':""}</div><div class="track">${BTICKS.slice(1,-1).map(t=>`<span class="grid" style="left:${t/BMAX*100}%"></span>`).join("")}<span class="ref"></span><span class="bar"></span></div><div class="bar-val"></div><div class="bar-t"></div>`;
+      row.addEventListener("mousemove",e=>showTip(e,row.dataset.tip));row.addEventListener("mouseleave",hideTip);
+      row.addEventListener("click",e=>showTip(e,row.dataset.tip));
+      barEls[m.id]=row;box.appendChild(row);});
+  }
+  rows.forEach((r,i)=>{const row=barEls[r.id];row.style.order=i+1;
+    row.querySelector(".bar").style.width=(r.v/BMAX*100)+"%";
+    row.querySelector(".ref").style.left=(bestB.v/BMAX*100)+"%";
+    row.querySelector(".bar-val").textContent=f1(r.v);
+    row.querySelector(".bar-t").textContent=r.id==="llm2jev"?"1.00×":r.t.toFixed(2)+"×";
+    const m=MM[r.id];
+    const lines=[`<b>${m.name}</b> · <span class="k">${barView==="avg"?"6 模型平均":sn(barView)}</span>`,
+      `<span class="k">宏平均</span> <span class="num">${f1(r.v)}</span> <span class="k">· 第 ${i+1} / ${rows.length}</span>`];
+    if(r.id!=="llm2jev")lines.push(`<span class="k">相对 LLM2Jev</span> <span class="num">${sgn(r.v-llm.v)} pp</span>`);
+    if(m.ours)lines.push(`<span class="k">相对最强现成方法（${MM[bestB.id].name}）</span> <span class="num">${sgn(r.v-bestB.v)} pp</span>`);
+    lines.push(`<span class="k">用时</span> <span class="num">${r.t.toFixed(2)}×</span> <span class="k">LLM2Jev${barView==="avg"?"（几何平均）":""}</span>`);
+    if(m.ours&&barView!=="avg")lines.push(`<span class="k">${m.home===barView?"这个模型就是它的搜索模型":"这个模型没参与它的搜索"}</span>`);
+    if(r.id==="anyjev")lines.push('<span class="k">CLINC 超出 26 个选项上限，记 0 分</span>');
+    row.dataset.tip=lines.join("<br>");
+  });
+  const ours=rows.find(r=>r.id==="jams9b");
+  document.getElementById("bar-title").textContent=barView==="avg"?"6 个模型的平均宏平均分":`${barView}：6 场景宏平均`;
+  document.getElementById("bar-note").textContent=barView==="avg"
+    ?`JAMS-9B ${f1(ours.v)}，最强现成方法 ${MM[bestB.id].name} ${f1(bestB.v)}，LLM2Jev ${f1(llm.v)}。用时取几何平均。`
+    :`JAMS-9B ${f1(ours.v)}，最强现成方法 ${MM[bestB.id].name} ${f1(bestB.v)}（${sgn(ours.v-bestB.v)} pp）。${barView==="Qwen3.5-9B"?"JAMS-9B 在这个模型上搜索，测试场景仍未见过。":barView==="Qwen3.5-4B"?"JAMS-4B 两个版本在这个模型上搜索，测试场景仍未见过。":"这个模型没有参与任何一次搜索。"}`;
+}
+
+/* ---------- 01 forest ---------- */
+const FOREST={
+  best:[["Qwen3.5-4B","chat",4.6,2.3,6.8],["Qwen3.5-9B","sglang",4.7,2.0,7.0],["Qwen3-8B","jevlocal",2.8,0.3,5.0],["Qwen3-4B-Instruct-2507","sglang",2.8,0.5,4.8],["gemma-4-E4B-it","chat",0.2,-1.7,2.0],["Qwen3.5-27B","llm2jev",1.4,-1.0,4.0]],
+  llm2jev:[["Qwen3.5-4B","llm2jev",8.2,5.6,11.0],["Qwen3.5-9B","llm2jev",10.2,7.9,12.8],["Qwen3-8B","llm2jev",6.1,3.7,8.4],["Qwen3-4B-Instruct-2507","llm2jev",8.5,5.6,11.0],["gemma-4-E4B-it","llm2jev",6.4,3.6,9.3],["Qwen3.5-27B","llm2jev",1.4,-1.0,4.0]]};
+const FLO=-4,FHI=14,FT=[-4,0,4,8,12];
+let fView=store("jams.forest")||"best";
+const fx=v=>(v-FLO)/(FHI-FLO)*100;
+function renderForest(){
+  document.querySelectorAll("#forest-seg button").forEach(b=>b.setAttribute("aria-pressed",b.dataset.f===fView));
+  const box=document.getElementById("forest");
+  if(!box.dataset.init){box.dataset.init=1;
+    FOREST.best.forEach((_,i)=>{const r=document.createElement("div");r.className="f-row";
+      r.innerHTML=`<div class="f-label"><b></b><span></span></div><div class="f-track">${FT.filter(t=>t!==0).map(t=>`<span class="f-grid" style="left:${fx(t)}%"></span>`).join("")}<span class="f-zero" style="left:${fx(0)}%"></span><span class="f-ci"></span><span class="f-dot"></span></div><div class="f-val"></div>`;
+      r.addEventListener("mousemove",e=>showTip(e,r.dataset.tip));r.addEventListener("mouseleave",hideTip);box.appendChild(r);});
+    const ax=document.createElement("div");ax.className="f-axis";ax.setAttribute("aria-hidden","true");
+    ax.innerHTML='<span></span><div class="ticks">'+FT.map(t=>`<span style="left:${fx(t)}%">${t>0?"+":""}${t}</span>`).join("")+'</div><span class="f-val" style="color:var(--muted);font-size:.68rem">pp</span>';box.appendChild(ax);}
+  const rows=box.querySelectorAll(".f-row");
+  FOREST[fView].forEach(([md,c,d,lo,hi],i)=>{const r=rows[i];r.classList.toggle("cross",lo<=0);
+    r.querySelector(".f-label b").textContent=sn(md);
+    r.querySelector(".f-label span").textContent="对比 "+MM[c].name;
+    const ci=r.querySelector(".f-ci");ci.style.left=fx(lo)+"%";ci.style.width=(fx(hi)-fx(lo))+"%";
+    r.querySelector(".f-dot").style.left=fx(d)+"%";
+    r.querySelector(".f-val").innerHTML=`${sgn(d)}<small>[${lo.toFixed(1)}, ${hi.toFixed(1)}]</small>`;
+    r.dataset.tip=`<b>${md}</b><br><span class="k">JAMS-9B − ${MM[c].name}</span> <span class="num">${sgn(d)} pp</span><br><span class="k">95% 区间</span> <span class="num">[${lo.toFixed(1)}, ${hi.toFixed(1)}]</span>${lo<=0?'<br><span class="k">区间跨过 0：这一格算打平</span>':""}`;});
+  document.getElementById("forest-note").textContent=fView==="best"
+    ?"每个模型上和分数最高的那个现成方法比（含 LLM2Jev）。4 个模型上区间在 0 以上，gemma 和 27B 上打平。"
+    :"和 LLM2Jev 比。5 个小模型上提升 6.1 到 10.2 pp，区间全部在 0 以上；27B 上 +1.4，区间跨过 0。";
+}
+document.querySelectorAll("#forest-seg button").forEach(b=>b.onclick=()=>{fView=b.dataset.f;store("jams.forest",fView);renderForest();});
+
+/* ---------- 03 heatmap ---------- */
+const GROUPS=[
+  {label:"对照",methods:["llm2jev"]},
+  {label:"现成 TRAINING-FREE 方法",methods:["sglang","anyjev","chat","jevlocal"]},
+  {label:"JAMS（本文）",methods:["jams4b","jams4bfast","jams9b"]}];
+const METRICS=[
+  {k:"when2call",n:"When2Call",s:"4 选 1",g:"scene"},
+  {k:"clinc",n:"CLINC",s:"macro-F1 · 151 选项",g:"scene"},
+  {k:"hover",n:"HoVer",s:"二选一",g:"scene"},
+  {k:"phish",n:"PhishNChips",s:"二选一",g:"scene"},
+  {k:"home",n:"home-appliance",s:"整 case 全对",g:"scene"},
+  {k:"jevbench",n:"JevBench",s:"231 题",g:"scene"},
+  {k:"macro6",n:"6 场景宏平均",s:"主指标",g:"sum"},
+  {k:"macro5",n:"去 home 5 场景",s:"",g:"sum"},
+  {k:"tratio",n:"用时",s:"÷ LLM2Jev，越小越快",g:"time",lower:true}];
+const MK=Object.fromEntries(METRICS.map(m=>[m.k,m]));
+const isNA=(r,k)=>k==="clinc"&&r.m==="anyjev";
+let hs=Object.assign({view:"model",color:"delta",model:"Qwen3.5-9B",metric:"macro6",sort:null,dir:-1},store("jams.hm")||{});
+if(!MODELS.includes(hs.model))hs.model="Qwen3.5-9B";if(!MK[hs.metric])hs.metric="macro6";
+const saveH=()=>store("jams.hm",hs);
+function deltaOf(r,k){const b=get(r.model,"llm2jev");if(!b||isNA(r,k)||k==="tratio")return null;return r[k]-b[k];}
+function fmt(v,k){if(v==null)return"–";return k==="tratio"?v.toFixed(2)+"×":v.toFixed(1);}
+function cellStyle(r,k){
+  if(isNA(r,k))return{bg:"",hi:false};
+  let t,pole;
+  if(k==="tratio"){if(r.m==="llm2jev")return{bg:"var(--mid)",hi:false};const l=Math.log2(r[k]);t=Math.min(1,Math.abs(l)/3);pole=l<0?"--pos":"--neg";}
+  else if(hs.color==="delta"){if(r.m==="llm2jev")return{bg:"var(--mid)",hi:false};const d=deltaOf(r,k);t=Math.min(1,Math.abs(d)/15);pole=d>=0?"--pos":"--neg";}
+  else{t=Math.max(0,Math.min(1,r[k]/100));return{bg:`color-mix(in oklab, var(--seq1) ${Math.round(t*100)}%, var(--seq0))`,hi:t>0.6};}
+  return{bg:`color-mix(in oklab, var(${pole}) ${Math.round(t*100)}%, var(--mid))`,hi:t>0.55};
+}
+function bestSet(rows,k){const vals=rows.filter(r=>!isNA(r,k)).map(r=>r[k]);if(!vals.length)return new Set();const b=MK[k].lower?Math.min(...vals):Math.max(...vals);return new Set(rows.filter(r=>!isNA(r,k)&&Math.abs(r[k]-b)<1e-9));}
+function rankOf(rows,r,k){const vs=rows.filter(x=>!isNA(x,k)).map(x=>x[k]).sort((a,b)=>MK[k].lower?a-b:b-a);return[vs.indexOf(r[k])+1,vs.length];}
+function td(r,k,colRows,best){
+  const c=document.createElement("td");c.className="c";
+  if(isNA(r,k)){c.classList.add("na");c.textContent="不支持";}
+  else{const st=cellStyle(r,k);if(st.bg)c.style.background=st.bg;if(st.hi)c.classList.add("hi");c.textContent=fmt(r[k],k);
+    if(hs.color==="delta"&&k!=="tratio"&&r.m!=="llm2jev"){const s=document.createElement("span");s.className="d";s.textContent=sgn(deltaOf(r,k));c.appendChild(s);}
+    if(best.has(r))c.classList.add("best");}
+  const m=MK[k],o=[`<b>${MM[r.m].name}</b> · <span class="k">${sn(r.model)}</span>`,`<span class="k">${m.n}</span> <span class="num">${isNA(r,k)?"不支持（151 个选项超出 26 的上限）":fmt(r[k],k)}</span>`];
+  if(!isNA(r,k)){const d=deltaOf(r,k);if(d!=null&&r.m!=="llm2jev")o.push(`<span class="k">相对 LLM2Jev</span> <span class="num">${sgn(d)} pp</span>`);
+    if(k==="tratio")o.push(`<span class="k">绝对用时</span> <span class="num">${r.spq.toFixed(3)} 秒/题</span>`);
+    const[a,b]=rankOf(colRows,r,k);o.push(`<span class="k">在本列排名</span> <span class="num">${a} / ${b}</span>`);}
+  if(MM[r.m].home===r.model)o.push('<span class="k">这是它的搜索模型</span>');
+  c.dataset.tip=o.join("<br>");return c;
+}
+function rowHead(id,model){const th=document.createElement("th");th.scope="row";th.textContent=MM[id].name;if(model&&MM[id].home===model){const s=document.createElement("span");s.className="home";s.textContent="搜索模型";th.appendChild(s);}return th;}
+function headCell(text,sub,cls){const th=document.createElement("th");th.scope="col";if(cls)th.className=cls;const sp=document.createElement("span");sp.textContent=text;th.appendChild(sp);if(sub){const s=document.createElement("small");s.textContent=sub;th.appendChild(s);}return th;}
+function trCls(id){return id==="llm2jev"?"ref":MM[id].ours?"ours":"";}
+function groupRow(tb,label,span){const gr=tb.insertRow();gr.className="grp";const gh=document.createElement("th");gh.colSpan=span;gh.textContent=label;gr.appendChild(gh);}
+function renderModel(tbl){
+  const rows=DATA.filter(r=>r.model===hs.model);const hr=tbl.createTHead().insertRow();hr.appendChild(headCell("方法","","l"));
+  let pg=null;METRICS.forEach(m=>{hr.appendChild(headCell(m.n,m.s,pg&&pg!==m.g?"sep":""));pg=m.g;});
+  const tb=tbl.createTBody();const best=Object.fromEntries(METRICS.map(m=>[m.k,bestSet(rows,m.k)]));
+  GROUPS.forEach(g=>{groupRow(tb,g.label,METRICS.length+1);g.methods.forEach(id=>{const r=get(hs.model,id);const tr=tb.insertRow();tr.className=trCls(id);tr.appendChild(rowHead(id,hs.model));
+    let p=null;METRICS.forEach(m=>{const c=td(r,m.k,rows,best[m.k]);if(p&&p!==m.g)c.classList.add("sep");p=m.g;tr.appendChild(c);});});});
+  title(`${hs.model}：每个场景的分数（%）`,"格子上面是分数，下面的小字是相对同一模型上 LLM2Jev 的差（pp）。用时一列始终按快慢着色。");
+}
+function renderMetric(tbl){
+  const k=hs.metric,m=MK[k];const hr=tbl.createTHead().insertRow();hr.appendChild(headCell("方法","","l"));
+  MODELS.forEach(md=>hr.appendChild(headCell(sn(md),md==="Qwen3.5-27B"?"更大模型":"")));
+  const tb=tbl.createTBody();const best=Object.fromEntries(MODELS.map(md=>[md,bestSet(DATA.filter(r=>r.model===md),k)]));
+  GROUPS.forEach(g=>{groupRow(tb,g.label,MODELS.length+1);g.methods.forEach(id=>{const tr=tb.insertRow();tr.className=trCls(id);tr.appendChild(rowHead(id,null));
+    MODELS.forEach(md=>{const r=get(md,id);const c=td(r,k,DATA.filter(x=>x.model===md),best[md]);
+      if(MM[id].home===md)c.style.boxShadow=(c.classList.contains("best")?"inset 0 0 0 2px var(--ink), ":"")+"inset 0 -3px 0 0 var(--accent)";tr.appendChild(c);});});});
+  title(`${m.n}${m.s?"（"+m.s+"）":""}：方法 × 模型`,"每列是一个模型，每列最好的值加粗框出。底部有一道蓝色横线的格子，是这份 JAMS 当初搜索时用的模型。");
+}
+function renderAll(tbl){
+  let rows=DATA.slice();const order=GROUPS.flatMap(g=>g.methods);
+  if(hs.sort){const k=hs.sort;rows.sort((a,b)=>((isNA(a,k)?-Infinity:a[k])-(isNA(b,k)?-Infinity:b[k]))*hs.dir);}
+  else rows.sort((a,b)=>MODELS.indexOf(a.model)-MODELS.indexOf(b.model)||order.indexOf(a.m)-order.indexOf(b.m));
+  const hr=tbl.createTHead().insertRow();hr.appendChild(headCell("方法","","l"));hr.appendChild(headCell("模型","","l"));
+  let pg=null;METRICS.forEach(m=>{const th=headCell(m.n,m.s,(pg&&pg!==m.g?"sep ":"")+"sortable");pg=m.g;th.tabIndex=0;
+    if(hs.sort===m.k)th.setAttribute("aria-sort",hs.dir>0?"ascending":"descending");
+    const act=()=>{if(hs.sort===m.k)hs.dir=-hs.dir;else{hs.sort=m.k;hs.dir=m.lower?1:-1;}saveH();renderHM();};
+    th.addEventListener("click",act);th.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();act();}});hr.appendChild(th);});
+  const tb=tbl.createTBody();const best=Object.fromEntries(METRICS.map(m=>[m.k,bestSet(DATA,m.k)]));
+  rows.forEach(r=>{const tr=tb.insertRow();tr.className=trCls(r.m);tr.appendChild(rowHead(r.m,r.model));
+    const mt=document.createElement("td");mt.className="txt";mt.textContent=sn(r.model);tr.appendChild(mt);
+    let p=null;METRICS.forEach(m=>{const c=td(r,m.k,DATA,best[m.k]);if(p&&p!==m.g)c.classList.add("sep");p=m.g;tr.appendChild(c);});});
+  title("全部 48 行：6 个模型 × 8 个方法","点表头按该列排序，再点一次反向。加粗框出的是全部 48 行里该列的最好值。");
+}
+function title(t,n){document.getElementById("sheet-title").textContent=t;document.getElementById("sheet-note").textContent=n;}
+function legend(){
+  const el=document.getElementById("legend");const grad='linear-gradient(90deg,var(--neg),var(--mid),var(--pos))';
+  if(hs.view==="metric"&&hs.metric==="tratio")el.innerHTML=`<span>慢 8×</span><span class="lb" style="background:${grad}"></span><span>快 8×</span>`;
+  else if(hs.color==="delta")el.innerHTML=`<span>−15 pp</span><span class="lb" style="background:${grad}"></span><span>+15 pp</span>`;
+  else el.innerHTML='<span>0</span><span class="lb" style="background:linear-gradient(90deg,var(--seq0),var(--seq1))"></span><span>100</span>';
+}
+function chips(){
+  const box=document.getElementById("chips"),lab=document.getElementById("pick-label"),ctl=document.getElementById("pick-ctl");box.innerHTML="";
+  if(hs.view==="all"){ctl.hidden=true;return;}ctl.hidden=false;
+  const items=hs.view==="model"?MODELS.map(m=>[m,sn(m)]):METRICS.map(m=>[m.k,m.n]);
+  lab.textContent=hs.view==="model"?"模型":"场景 / 指标";
+  items.forEach(([v,t])=>{const b=document.createElement("button");b.type="button";b.textContent=t;
+    b.setAttribute("aria-pressed",hs.view==="model"?hs.model===v:hs.metric===v);
+    b.onclick=()=>{if(hs.view==="model")hs.model=v;else hs.metric=v;saveH();renderHM();};box.appendChild(b);});
+}
+function renderHM(){
+  document.querySelectorAll("#view-seg button").forEach(b=>b.setAttribute("aria-pressed",b.dataset.v===hs.view));
+  document.querySelectorAll("#color-seg button").forEach(b=>b.setAttribute("aria-pressed",b.dataset.c===hs.color));
+  chips();const tbl=document.getElementById("tbl");tbl.innerHTML="";
+  if(hs.view==="model")renderModel(tbl);else if(hs.view==="metric")renderMetric(tbl);else renderAll(tbl);legend();
+}
+document.querySelectorAll("#view-seg button").forEach(b=>b.onclick=()=>{hs.view=b.dataset.v;saveH();renderHM();});
+document.querySelectorAll("#color-seg button").forEach(b=>b.onclick=()=>{hs.color=b.dataset.c;saveH();renderHM();});
+const tblEl=document.getElementById("tbl");
+const cellTip=e=>{const c=e.target.closest("td.c");if(!c||!c.dataset.tip){hideTip();return;}showTip(e,c.dataset.tip);};
+tblEl.addEventListener("mousemove",cellTip);tblEl.addEventListener("click",cellTip);tblEl.addEventListener("mouseleave",hideTip);
+window.addEventListener("scroll",hideTip,{passive:true});
+
+renderBars();renderForest();renderHM();
+</script>
+</body>
+</html>
